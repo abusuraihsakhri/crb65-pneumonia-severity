@@ -10,7 +10,7 @@ from enrichment import (
     CurrentStateEngine,
     EnrichmentRoadmapEngine,
     Curb65ComparisonEngine,
-    30dayMortalityPredictionEngine,
+    Engine_30dayMortalityPredictionEngine,
     DispositionDecisionSupportEngine,
     EmpiricAntibioticSelectionEngine,
     VaccinationStatusCheckEngine,

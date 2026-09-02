@@ -162,7 +162,7 @@ class Curb65ComparisonEngine:
 # 4. 30-DAY MORTALITY PREDICTION
 # =============================================================================
 @dataclass
-class 30dayMortalityPredictionEngineResult:
+class Engine_30dayMortalityPredictionEngineResult:
     feature_name: str = "30-Day Mortality Prediction"
     status: str = "OPTIMAL"
     score: float = 0.0
@@ -171,16 +171,16 @@ class 30dayMortalityPredictionEngineResult:
     recommendations: List[str] = field(default_factory=list)
     timestamp: str = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat())
 
-class 30dayMortalityPredictionEngine:
+class Engine_30dayMortalityPredictionEngine:
     """
     30-Day Mortality Prediction: Map CRB-65 to validated 30-day mortality: 0 (0.7%), 1 (3.2%), 2 (13%), 3 (17%), 4 (41%). Generate risk communication tex
     """
     def __init__(self, threshold: float = 1.0, config: Optional[Dict[str, Any]] = None):
         self.threshold = threshold
         self.config = config or {}
-        self.history: List[30dayMortalityPredictionEngineResult] = []
+        self.history: List[Engine_30dayMortalityPredictionEngineResult] = []
 
-    def evaluate(self, primary_value: float, secondary_value: float = 0.0, **kwargs) -> 30dayMortalityPredictionEngineResult:
+    def evaluate(self, primary_value: float, secondary_value: float = 0.0, **kwargs) -> Engine_30dayMortalityPredictionEngineResult:
         alerts = []
         recs = []
         status = "OPTIMAL"
@@ -197,7 +197,7 @@ class 30dayMortalityPredictionEngine:
         else:
             recs.append("Parameters nominal under standard operating bounds.")
 
-        res = 30dayMortalityPredictionEngineResult(
+        res = Engine_30dayMortalityPredictionEngineResult(
             feature_name="30-Day Mortality Prediction",
             status=status,
             score=score,
@@ -417,7 +417,7 @@ class Crb65pneumoniaseverityEnrichmentSuite:
         self.currentstateengine = CurrentStateEngine()
         self.enrichmentroadmapeng = EnrichmentRoadmapEngine()
         self.curb65comparisonengi = Curb65ComparisonEngine()
-        self.30daymortalitypredic = 30dayMortalityPredictionEngine()
+        self.engine_30daymortalitypredic = Engine_30dayMortalityPredictionEngine()
         self.dispositiondecisions = DispositionDecisionSupportEngine()
         self.empiricantibioticsel = EmpiricAntibioticSelectionEngine()
         self.vaccinationstatusche = VaccinationStatusCheckEngine()
@@ -428,7 +428,7 @@ class Crb65pneumoniaseverityEnrichmentSuite:
         results["CurrentStateEngine"] = self.currentstateengine.evaluate(primary_val, secondary_val)
         results["EnrichmentRoadmapEngine"] = self.enrichmentroadmapeng.evaluate(primary_val, secondary_val)
         results["Curb65ComparisonEngine"] = self.curb65comparisonengi.evaluate(primary_val, secondary_val)
-        results["30dayMortalityPredictionEngine"] = self.30daymortalitypredic.evaluate(primary_val, secondary_val)
+        results["Engine_30dayMortalityPredictionEngine"] = self.engine_30daymortalitypredic.evaluate(primary_val, secondary_val)
         results["DispositionDecisionSupportEngine"] = self.dispositiondecisions.evaluate(primary_val, secondary_val)
         results["EmpiricAntibioticSelectionEngine"] = self.empiricantibioticsel.evaluate(primary_val, secondary_val)
         results["VaccinationStatusCheckEngine"] = self.vaccinationstatusche.evaluate(primary_val, secondary_val)
