@@ -18,6 +18,27 @@ from dataclasses import dataclass, field, asdict
 from typing import Dict, Any, List, Optional, Tuple
 
 
+class ClinicalValueError(ValueError):
+    """Raised when clinical parameters are outside physiologically plausible ranges."""
+    pass
+
+
+def _validate_clinical_params(respiratory_rate: int, systolic_bp: int, diastolic_bp: int, age_years: int) -> None:
+    """Validate clinical parameters are within physiologically plausible ranges."""
+    if not isinstance(age_years, int) or age_years < 0 or age_years > 150:
+        raise ClinicalValueError(f"Age must be an integer between 0 and 150, got {age_years}")
+    if not isinstance(respiratory_rate, int) or respiratory_rate < 0 or respiratory_rate > 100:
+        raise ClinicalValueError(f"Respiratory rate must be an integer between 0 and 100 bpm, got {respiratory_rate}")
+    if not isinstance(systolic_bp, int) or systolic_bp < 0 or systolic_bp > 300:
+        raise ClinicalValueError(f"Systolic BP must be an integer between 0 and 300 mmHg, got {systolic_bp}")
+    if not isinstance(diastolic_bp, int) or diastolic_bp < 0 or diastolic_bp > 200:
+        raise ClinicalValueError(f"Diastolic BP must be an integer between 0 and 200 mmHg, got {diastolic_bp}")
+    if diastolic_bp > systolic_bp:
+        raise ClinicalValueError(
+            f"Diastolic BP ({diastolic_bp}) cannot exceed systolic BP ({systolic_bp})"
+        )
+
+
 @dataclass
 class CRB65CriteriaBreakdown:
     """Individual criteria evaluations for CRB-65."""
@@ -94,6 +115,7 @@ class CRB65Engine:
         age_years: int = 55,
     ) -> CRB65Result:
         """Evaluate full CRB-65 score, mortality estimate, and antibiotic triage."""
+        _validate_clinical_params(respiratory_rate, systolic_bp, diastolic_bp, age_years)
         factors = []
 
         pts_c, desc_c = cls.evaluate_confusion(confusion)

@@ -3,7 +3,7 @@
 Comprehensive Unit Test Suite for CRB-65 Pneumonia Severity Score Engine
 Tests individual criteria scoring (Confusion, RR, BP, Age), risk groups (0, 1-2, 3-4),
 30-day mortality risk projections, outpatient vs inpatient disposition recommendations,
-JSON export, and CLI commands.
+JSON export, CLI commands, and input validation.
 """
 
 import unittest
@@ -11,6 +11,8 @@ from crb65_score import (
     CRB65Engine,
     CRB65Result,
     CRB65CriteriaBreakdown,
+    ClinicalValueError,
+    _validate_clinical_params,
     main,
 )
 
@@ -159,6 +161,55 @@ class TestEndToEndAndCLI(unittest.TestCase):
 
     def test_cli_chat_command(self):
         self.assertEqual(main(["chat", "What", "are", "the", "crb65", "criteria?"]), 0)
+
+
+class TestInputValidation(unittest.TestCase):
+    """Test suite for clinical parameter validation."""
+
+    def test_valid_params_accepted(self):
+        """Normal clinical parameters should not raise."""
+        _validate_clinical_params(respiratory_rate=18, systolic_bp=120, diastolic_bp=80, age_years=55)
+        _validate_clinical_params(respiratory_rate=30, systolic_bp=90, diastolic_bp=60, age_years=65)
+        _validate_clinical_params(respiratory_rate=0, systolic_bp=0, diastolic_bp=0, age_years=0)
+
+    def test_negative_age_rejected(self):
+        with self.assertRaises(ClinicalValueError):
+            _validate_clinical_params(respiratory_rate=18, systolic_bp=120, diastolic_bp=80, age_years=-5)
+
+    def test_age_too_high_rejected(self):
+        with self.assertRaises(ClinicalValueError):
+            _validate_clinical_params(respiratory_rate=18, systolic_bp=120, diastolic_bp=80, age_years=200)
+
+    def test_negative_rr_rejected(self):
+        with self.assertRaises(ClinicalValueError):
+            _validate_clinical_params(respiratory_rate=-1, systolic_bp=120, diastolic_bp=80, age_years=50)
+
+    def test_rr_too_high_rejected(self):
+        with self.assertRaises(ClinicalValueError):
+            _validate_clinical_params(respiratory_rate=150, systolic_bp=120, diastolic_bp=80, age_years=50)
+
+    def test_negative_bp_rejected(self):
+        with self.assertRaises(ClinicalValueError):
+            _validate_clinical_params(respiratory_rate=18, systolic_bp=-10, diastolic_bp=80, age_years=50)
+        with self.assertRaises(ClinicalValueError):
+            _validate_clinical_params(respiratory_rate=18, systolic_bp=120, diastolic_bp=-5, age_years=50)
+
+    def test_bp_too_high_rejected(self):
+        with self.assertRaises(ClinicalValueError):
+            _validate_clinical_params(respiratory_rate=18, systolic_bp=350, diastolic_bp=80, age_years=50)
+        with self.assertRaises(ClinicalValueError):
+            _validate_clinical_params(respiratory_rate=18, systolic_bp=120, diastolic_bp=250, age_years=50)
+
+    def test_diastolic_exceeds_systolic_rejected(self):
+        with self.assertRaises(ClinicalValueError):
+            _validate_clinical_params(respiratory_rate=18, systolic_bp=80, diastolic_bp=90, age_years=50)
+
+    def test_engine_evaluate_validates(self):
+        """CRB65Engine.evaluate should reject invalid parameters."""
+        with self.assertRaises(ClinicalValueError):
+            CRB65Engine.evaluate(age_years=-1)
+        with self.assertRaises(ClinicalValueError):
+            CRB65Engine.evaluate(age_years=50, respiratory_rate=200)
 
 
 if __name__ == "__main__":

@@ -42,43 +42,64 @@ Domain: Pulmonology / Infectious Diseases / Primary Care
 
 ```text
   total_score = pts_c + pts_r + pts_b + pts_65
-  if total_score == 0:
-  mortality = 8.2 if total_score == 2 else 5.3
-  mortality = 31.3 if total_score == 4 else 23.0
+
+  CRB-65 Criteria (1 point each):
+    C: Confusion (AMT <= 8, GCS < 15, or new disorientation)
+    R: Respiratory Rate >= 30 breaths/min
+    B: Blood Pressure (Systolic < 90 mmHg OR Diastolic <= 60 mmHg)
+    65: Age >= 65 years
+
+  Risk Stratification:
+    Score 0:     Low Risk (Group 1)       ~1.2% 30-day mortality  → Outpatient
+    Score 1-2:   Intermediate Risk (Group 2)  ~5-12% mortality    → Inpatient
+    Score 3-4:   High Risk (Group 3)       ~23-31% mortality     → Urgent/ICU
 ```
 
 ---
 
 ## 💻 CLI Quickstart & Usage
 
-### 1. Guided Interactive Mode
+### 1. Evaluate a Single Patient
 ```bash
-python cli.py
+python crb65_score.py eval --age 72 --rr 32 --confusion
 ```
 
-### 2. Direct Parameterized Evaluation
+### 2. JSON Output
 ```bash
-python cli.py --task-id <value> --target <value> --primary <value> --secondary <value>
+python crb65_score.py eval --age 68 --json
+```
+
+### 3. Batch Process CSV
+```bash
+python crb65_score.py batch -i sample.csv -o results.csv
+```
+
+### 4. Clinical Q&A
+```bash
+python crb65_score.py chat "What are the CRB-65 criteria?"
 ```
 
 ### Parameter Reference
-- `--task-id`: Specifies input measurement or parameter value.
-- `--target`: Specifies input measurement or parameter value.
-- `--primary`: Specifies input measurement or parameter value.
-- `--secondary`: Specifies input measurement or parameter value.
-- `--critical`: Specifies input measurement or parameter value.
-- `--status`: Specifies input measurement or parameter value.
-- `--input`: Specifies input measurement or parameter value.
-- `--output`: Specifies input measurement or parameter value.
+| Parameter | Description | Default |
+|:----------|:------------|:--------|
+| `--patient-id` | Patient identifier | `PT-2026-001` |
+| `--confusion` | New onset confusion / AMT <=8 / GCS <15 | `False` |
+| `--rr` | Respiratory Rate (breaths/min) | `18` |
+| `--sbp` | Systolic Blood Pressure (mmHg) | `120` |
+| `--dbp` | Diastolic Blood Pressure (mmHg) | `80` |
+| `--age` | Age in years (required) | — |
+| `--json` | Output JSON format | `False` |
 
-### Input Data Schema
+### Input Data Schema (Batch CSV)
 
 | Field | Description | Requirement |
 |:------|:------------|:------------|
-| `Patient_ID` | Parameter / observation metric | Required |
-| `v1` | Parameter / observation metric | Required |
-| `v2` | Parameter / observation metric | Required |
-| `v3` | Parameter / observation metric | Required |
+| `patient_id` | Patient identifier | Required |
+| `confusion` | Confusion present (1/true/yes) | Optional (default: 0) |
+| `rr` | Respiratory Rate (breaths/min) | Optional (default: 18) |
+| `sbp` | Systolic Blood Pressure (mmHg) | Optional (default: 120) |
+| `dbp` | Diastolic Blood Pressure (mmHg) | Optional (default: 80) |
+| `age` | Age in years | Required |
 
 ---
 

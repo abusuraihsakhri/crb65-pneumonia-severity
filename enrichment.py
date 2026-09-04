@@ -8,12 +8,11 @@ import datetime
 import math
 import json
 
-# =============================================================================
-# 1. CURRENT STATE
-# =============================================================================
+
 @dataclass
-class CurrentStateEngineResult:
-    feature_name: str = "Current State"
+class EnrichmentEngineResult:
+    """Shared result type for all enrichment engines."""
+    feature_name: str = "Enrichment Engine"
     status: str = "OPTIMAL"
     score: float = 0.0
     metrics: Dict[str, Any] = field(default_factory=dict)
@@ -21,16 +20,17 @@ class CurrentStateEngineResult:
     recommendations: List[str] = field(default_factory=list)
     timestamp: str = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat())
 
-class CurrentStateEngine:
-    """
-    Current State: Non-laboratory CRB-65 score (0-4) for primary care pneumonia stratification.
-    """
-    def __init__(self, threshold: float = 1.0, config: Optional[Dict[str, Any]] = None):
+
+class BaseEnrichmentEngine:
+    """Base class for enrichment engines with shared threshold-based evaluation logic."""
+
+    def __init__(self, feature_name: str, threshold: float = 1.0, config: Optional[Dict[str, Any]] = None):
+        self.feature_name = feature_name
         self.threshold = threshold
         self.config = config or {}
-        self.history: List[CurrentStateEngineResult] = []
+        self.history: List[EnrichmentEngineResult] = []
 
-    def evaluate(self, primary_value: float, secondary_value: float = 0.0, **kwargs) -> CurrentStateEngineResult:
+    def evaluate(self, primary_value: float, secondary_value: float = 0.0, **kwargs) -> EnrichmentEngineResult:
         alerts = []
         recs = []
         status = "OPTIMAL"
@@ -38,375 +38,90 @@ class CurrentStateEngine:
 
         if primary_value > self.threshold * 2:
             status = "CRITICAL_ALERT"
-            alerts.append(f"Current State: Primary value {primary_value:.2f} breached critical threshold ({self.threshold * 2:.2f})")
+            alerts.append(f"{self.feature_name}: Primary value {primary_value:.2f} breached critical threshold ({self.threshold * 2:.2f})")
             recs.append("Initiate immediate protocol review and escalate to attending lead.")
         elif primary_value > self.threshold:
             status = "WARNING"
-            alerts.append(f"Current State: Value {primary_value:.2f} exceeds baseline threshold ({self.threshold:.2f})")
+            alerts.append(f"{self.feature_name}: Value {primary_value:.2f} exceeds baseline threshold ({self.threshold:.2f})")
             recs.append("Increase monitoring frequency and perform secondary verification.")
         else:
             recs.append("Parameters nominal under standard operating bounds.")
 
-        res = CurrentStateEngineResult(
-            feature_name="Current State",
+        res = EnrichmentEngineResult(
+            feature_name=self.feature_name,
             status=status,
             score=score,
             metrics={"primary": primary_value, "secondary": secondary_value, **kwargs},
             alerts=alerts,
-            recommendations=recs
+            recommendations=recs,
         )
         self.history.append(res)
         return res
+
+
+# =============================================================================
+# 1. CURRENT STATE
+# =============================================================================
+class CurrentStateEngine(BaseEnrichmentEngine):
+    """Non-laboratory CRB-65 score (0-4) for primary care pneumonia stratification."""
+    def __init__(self, threshold: float = 1.0, config: Optional[Dict[str, Any]] = None):
+        super().__init__("Current State", threshold, config)
 
 # =============================================================================
 # 2. ENRICHMENT ROADMAP
 # =============================================================================
-@dataclass
-class EnrichmentRoadmapEngineResult:
-    feature_name: str = "Enrichment Roadmap"
-    status: str = "OPTIMAL"
-    score: float = 0.0
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    alerts: List[str] = field(default_factory=list)
-    recommendations: List[str] = field(default_factory=list)
-    timestamp: str = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat())
-
-class EnrichmentRoadmapEngine:
-    """
-    Enrichment Roadmap: Enrichment Roadmap
-    """
+class EnrichmentRoadmapEngine(BaseEnrichmentEngine):
+    """Enrichment Roadmap engine."""
     def __init__(self, threshold: float = 1.0, config: Optional[Dict[str, Any]] = None):
-        self.threshold = threshold
-        self.config = config or {}
-        self.history: List[EnrichmentRoadmapEngineResult] = []
-
-    def evaluate(self, primary_value: float, secondary_value: float = 0.0, **kwargs) -> EnrichmentRoadmapEngineResult:
-        alerts = []
-        recs = []
-        status = "OPTIMAL"
-        score = round(float(primary_value), 3)
-
-        if primary_value > self.threshold * 2:
-            status = "CRITICAL_ALERT"
-            alerts.append(f"Enrichment Roadmap: Primary value {primary_value:.2f} breached critical threshold ({self.threshold * 2:.2f})")
-            recs.append("Initiate immediate protocol review and escalate to attending lead.")
-        elif primary_value > self.threshold:
-            status = "WARNING"
-            alerts.append(f"Enrichment Roadmap: Value {primary_value:.2f} exceeds baseline threshold ({self.threshold:.2f})")
-            recs.append("Increase monitoring frequency and perform secondary verification.")
-        else:
-            recs.append("Parameters nominal under standard operating bounds.")
-
-        res = EnrichmentRoadmapEngineResult(
-            feature_name="Enrichment Roadmap",
-            status=status,
-            score=score,
-            metrics={"primary": primary_value, "secondary": secondary_value, **kwargs},
-            alerts=alerts,
-            recommendations=recs
-        )
-        self.history.append(res)
-        return res
+        super().__init__("Enrichment Roadmap", threshold, config)
 
 # =============================================================================
 # 3. CURB-65 COMPARISON ENGINE
 # =============================================================================
-@dataclass
-class Curb65ComparisonEngineResult:
-    feature_name: str = "CURB-65 Comparison Engine"
-    status: str = "OPTIMAL"
-    score: float = 0.0
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    alerts: List[str] = field(default_factory=list)
-    recommendations: List[str] = field(default_factory=list)
-    timestamp: str = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat())
-
-class Curb65ComparisonEngine:
-    """
-    CURB-65 Comparison Engine: Side-by-side CRB-65 vs. CURB-65 performance: CRB-65 omits BUN but has equivalent mortality prediction in primary care se
-    """
+class Curb65ComparisonEngine(BaseEnrichmentEngine):
+    """Side-by-side CRB-65 vs. CURB-65 performance: CRB-65 omits BUN but has equivalent mortality prediction in primary care."""
     def __init__(self, threshold: float = 1.0, config: Optional[Dict[str, Any]] = None):
-        self.threshold = threshold
-        self.config = config or {}
-        self.history: List[Curb65ComparisonEngineResult] = []
-
-    def evaluate(self, primary_value: float, secondary_value: float = 0.0, **kwargs) -> Curb65ComparisonEngineResult:
-        alerts = []
-        recs = []
-        status = "OPTIMAL"
-        score = round(float(primary_value), 3)
-
-        if primary_value > self.threshold * 2:
-            status = "CRITICAL_ALERT"
-            alerts.append(f"CURB-65 Comparison Engine: Primary value {primary_value:.2f} breached critical threshold ({self.threshold * 2:.2f})")
-            recs.append("Initiate immediate protocol review and escalate to attending lead.")
-        elif primary_value > self.threshold:
-            status = "WARNING"
-            alerts.append(f"CURB-65 Comparison Engine: Value {primary_value:.2f} exceeds baseline threshold ({self.threshold:.2f})")
-            recs.append("Increase monitoring frequency and perform secondary verification.")
-        else:
-            recs.append("Parameters nominal under standard operating bounds.")
-
-        res = Curb65ComparisonEngineResult(
-            feature_name="CURB-65 Comparison Engine",
-            status=status,
-            score=score,
-            metrics={"primary": primary_value, "secondary": secondary_value, **kwargs},
-            alerts=alerts,
-            recommendations=recs
-        )
-        self.history.append(res)
-        return res
+        super().__init__("CURB-65 Comparison Engine", threshold, config)
 
 # =============================================================================
 # 4. 30-DAY MORTALITY PREDICTION
 # =============================================================================
-@dataclass
-class Engine_30dayMortalityPredictionEngineResult:
-    feature_name: str = "30-Day Mortality Prediction"
-    status: str = "OPTIMAL"
-    score: float = 0.0
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    alerts: List[str] = field(default_factory=list)
-    recommendations: List[str] = field(default_factory=list)
-    timestamp: str = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat())
-
-class Engine_30dayMortalityPredictionEngine:
-    """
-    30-Day Mortality Prediction: Map CRB-65 to validated 30-day mortality: 0 (0.7%), 1 (3.2%), 2 (13%), 3 (17%), 4 (41%). Generate risk communication tex
-    """
+class Engine_30dayMortalityPredictionEngine(BaseEnrichmentEngine):
+    """Map CRB-65 to validated 30-day mortality: 0 (0.7%), 1 (3.2%), 2 (13%), 3 (17%), 4 (41%). Generate risk communication text."""
     def __init__(self, threshold: float = 1.0, config: Optional[Dict[str, Any]] = None):
-        self.threshold = threshold
-        self.config = config or {}
-        self.history: List[Engine_30dayMortalityPredictionEngineResult] = []
-
-    def evaluate(self, primary_value: float, secondary_value: float = 0.0, **kwargs) -> Engine_30dayMortalityPredictionEngineResult:
-        alerts = []
-        recs = []
-        status = "OPTIMAL"
-        score = round(float(primary_value), 3)
-
-        if primary_value > self.threshold * 2:
-            status = "CRITICAL_ALERT"
-            alerts.append(f"30-Day Mortality Prediction: Primary value {primary_value:.2f} breached critical threshold ({self.threshold * 2:.2f})")
-            recs.append("Initiate immediate protocol review and escalate to attending lead.")
-        elif primary_value > self.threshold:
-            status = "WARNING"
-            alerts.append(f"30-Day Mortality Prediction: Value {primary_value:.2f} exceeds baseline threshold ({self.threshold:.2f})")
-            recs.append("Increase monitoring frequency and perform secondary verification.")
-        else:
-            recs.append("Parameters nominal under standard operating bounds.")
-
-        res = Engine_30dayMortalityPredictionEngineResult(
-            feature_name="30-Day Mortality Prediction",
-            status=status,
-            score=score,
-            metrics={"primary": primary_value, "secondary": secondary_value, **kwargs},
-            alerts=alerts,
-            recommendations=recs
-        )
-        self.history.append(res)
-        return res
+        super().__init__("30-Day Mortality Prediction", threshold, config)
 
 # =============================================================================
 # 5. DISPOSITION DECISION SUPPORT
 # =============================================================================
-@dataclass
-class DispositionDecisionSupportEngineResult:
-    feature_name: str = "Disposition Decision Support"
-    status: str = "OPTIMAL"
-    score: float = 0.0
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    alerts: List[str] = field(default_factory=list)
-    recommendations: List[str] = field(default_factory=list)
-    timestamp: str = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat())
-
-class DispositionDecisionSupportEngine:
-    """
-    Disposition Decision Support: CRB-65 0-1: outpatient with safety-net. CRB-65 2: consider admission. CRB-65 3-4: hospitalize. Auto-generate admission v
-    """
+class DispositionDecisionSupportEngine(BaseEnrichmentEngine):
+    """CRB-65 0-1: outpatient with safety-net. CRB-65 2: consider admission. CRB-65 3-4: hospitalize. Auto-generate admission documentation."""
     def __init__(self, threshold: float = 1.0, config: Optional[Dict[str, Any]] = None):
-        self.threshold = threshold
-        self.config = config or {}
-        self.history: List[DispositionDecisionSupportEngineResult] = []
-
-    def evaluate(self, primary_value: float, secondary_value: float = 0.0, **kwargs) -> DispositionDecisionSupportEngineResult:
-        alerts = []
-        recs = []
-        status = "OPTIMAL"
-        score = round(float(primary_value), 3)
-
-        if primary_value > self.threshold * 2:
-            status = "CRITICAL_ALERT"
-            alerts.append(f"Disposition Decision Support: Primary value {primary_value:.2f} breached critical threshold ({self.threshold * 2:.2f})")
-            recs.append("Initiate immediate protocol review and escalate to attending lead.")
-        elif primary_value > self.threshold:
-            status = "WARNING"
-            alerts.append(f"Disposition Decision Support: Value {primary_value:.2f} exceeds baseline threshold ({self.threshold:.2f})")
-            recs.append("Increase monitoring frequency and perform secondary verification.")
-        else:
-            recs.append("Parameters nominal under standard operating bounds.")
-
-        res = DispositionDecisionSupportEngineResult(
-            feature_name="Disposition Decision Support",
-            status=status,
-            score=score,
-            metrics={"primary": primary_value, "secondary": secondary_value, **kwargs},
-            alerts=alerts,
-            recommendations=recs
-        )
-        self.history.append(res)
-        return res
+        super().__init__("Disposition Decision Support", threshold, config)
 
 # =============================================================================
 # 6. EMPIRIC ANTIBIOTIC SELECTION
 # =============================================================================
-@dataclass
-class EmpiricAntibioticSelectionEngineResult:
-    feature_name: str = "Empiric Antibiotic Selection"
-    status: str = "OPTIMAL"
-    score: float = 0.0
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    alerts: List[str] = field(default_factory=list)
-    recommendations: List[str] = field(default_factory=list)
-    timestamp: str = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat())
-
-class EmpiricAntibioticSelectionEngine:
-    """
-    Empiric Antibiotic Selection: Based on CRB-65 and setting: 0-1 = amoxicillin or macrolide, 2 = amoxicillin-clavulanate + macrolide, 3-4 = respiratory 
-    """
+class EmpiricAntibioticSelectionEngine(BaseEnrichmentEngine):
+    """Based on CRB-65 and setting: 0-1 = amoxicillin or macrolide, 2 = amoxicillin-clavulanate + macrolide, 3-4 = respiratory fluoroquinolone or IV dual therapy."""
     def __init__(self, threshold: float = 1.0, config: Optional[Dict[str, Any]] = None):
-        self.threshold = threshold
-        self.config = config or {}
-        self.history: List[EmpiricAntibioticSelectionEngineResult] = []
-
-    def evaluate(self, primary_value: float, secondary_value: float = 0.0, **kwargs) -> EmpiricAntibioticSelectionEngineResult:
-        alerts = []
-        recs = []
-        status = "OPTIMAL"
-        score = round(float(primary_value), 3)
-
-        if primary_value > self.threshold * 2:
-            status = "CRITICAL_ALERT"
-            alerts.append(f"Empiric Antibiotic Selection: Primary value {primary_value:.2f} breached critical threshold ({self.threshold * 2:.2f})")
-            recs.append("Initiate immediate protocol review and escalate to attending lead.")
-        elif primary_value > self.threshold:
-            status = "WARNING"
-            alerts.append(f"Empiric Antibiotic Selection: Value {primary_value:.2f} exceeds baseline threshold ({self.threshold:.2f})")
-            recs.append("Increase monitoring frequency and perform secondary verification.")
-        else:
-            recs.append("Parameters nominal under standard operating bounds.")
-
-        res = EmpiricAntibioticSelectionEngineResult(
-            feature_name="Empiric Antibiotic Selection",
-            status=status,
-            score=score,
-            metrics={"primary": primary_value, "secondary": secondary_value, **kwargs},
-            alerts=alerts,
-            recommendations=recs
-        )
-        self.history.append(res)
-        return res
+        super().__init__("Empiric Antibiotic Selection", threshold, config)
 
 # =============================================================================
 # 7. VACCINATION STATUS CHECK
 # =============================================================================
-@dataclass
-class VaccinationStatusCheckEngineResult:
-    feature_name: str = "Vaccination Status Check"
-    status: str = "OPTIMAL"
-    score: float = 0.0
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    alerts: List[str] = field(default_factory=list)
-    recommendations: List[str] = field(default_factory=list)
-    timestamp: str = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat())
-
-class VaccinationStatusCheckEngine:
-    """
-    Vaccination Status Check: For pneumonia patients: auto-flag pneumococcal (PCV20 or PCV15+PPSV23) and influenza vaccination status. Generate catch-
-    """
+class VaccinationStatusCheckEngine(BaseEnrichmentEngine):
+    """For pneumonia patients: auto-flag pneumococcal (PCV20 or PCV15+PPSV23) and influenza vaccination status. Generate catch-up recommendations."""
     def __init__(self, threshold: float = 1.0, config: Optional[Dict[str, Any]] = None):
-        self.threshold = threshold
-        self.config = config or {}
-        self.history: List[VaccinationStatusCheckEngineResult] = []
-
-    def evaluate(self, primary_value: float, secondary_value: float = 0.0, **kwargs) -> VaccinationStatusCheckEngineResult:
-        alerts = []
-        recs = []
-        status = "OPTIMAL"
-        score = round(float(primary_value), 3)
-
-        if primary_value > self.threshold * 2:
-            status = "CRITICAL_ALERT"
-            alerts.append(f"Vaccination Status Check: Primary value {primary_value:.2f} breached critical threshold ({self.threshold * 2:.2f})")
-            recs.append("Initiate immediate protocol review and escalate to attending lead.")
-        elif primary_value > self.threshold:
-            status = "WARNING"
-            alerts.append(f"Vaccination Status Check: Value {primary_value:.2f} exceeds baseline threshold ({self.threshold:.2f})")
-            recs.append("Increase monitoring frequency and perform secondary verification.")
-        else:
-            recs.append("Parameters nominal under standard operating bounds.")
-
-        res = VaccinationStatusCheckEngineResult(
-            feature_name="Vaccination Status Check",
-            status=status,
-            score=score,
-            metrics={"primary": primary_value, "secondary": secondary_value, **kwargs},
-            alerts=alerts,
-            recommendations=recs
-        )
-        self.history.append(res)
-        return res
+        super().__init__("Vaccination Status Check", threshold, config)
 
 # =============================================================================
 # 8. CHARLSON COMORBIDITY INTEGRATION
 # =============================================================================
-@dataclass
-class CharlsonComorbidityIntegrationEngineResult:
-    feature_name: str = "Charlson Comorbidity Integration"
-    status: str = "OPTIMAL"
-    score: float = 0.0
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    alerts: List[str] = field(default_factory=list)
-    recommendations: List[str] = field(default_factory=list)
-    timestamp: str = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat())
-
-class CharlsonComorbidityIntegrationEngine:
-    """
-    Charlson Comorbidity Integration: Combine CRB-65 with Charlson Comorbidity Index for more nuanced risk stratification. High comorbidity + low CRB-65 may s
-    """
+class CharlsonComorbidityIntegrationEngine(BaseEnrichmentEngine):
+    """Combine CRB-65 with Charlson Comorbidity Index for more nuanced risk stratification. High comorbidity + low CRB-65 may still warrant admission."""
     def __init__(self, threshold: float = 1.0, config: Optional[Dict[str, Any]] = None):
-        self.threshold = threshold
-        self.config = config or {}
-        self.history: List[CharlsonComorbidityIntegrationEngineResult] = []
-
-    def evaluate(self, primary_value: float, secondary_value: float = 0.0, **kwargs) -> CharlsonComorbidityIntegrationEngineResult:
-        alerts = []
-        recs = []
-        status = "OPTIMAL"
-        score = round(float(primary_value), 3)
-
-        if primary_value > self.threshold * 2:
-            status = "CRITICAL_ALERT"
-            alerts.append(f"Charlson Comorbidity Integration: Primary value {primary_value:.2f} breached critical threshold ({self.threshold * 2:.2f})")
-            recs.append("Initiate immediate protocol review and escalate to attending lead.")
-        elif primary_value > self.threshold:
-            status = "WARNING"
-            alerts.append(f"Charlson Comorbidity Integration: Value {primary_value:.2f} exceeds baseline threshold ({self.threshold:.2f})")
-            recs.append("Increase monitoring frequency and perform secondary verification.")
-        else:
-            recs.append("Parameters nominal under standard operating bounds.")
-
-        res = CharlsonComorbidityIntegrationEngineResult(
-            feature_name="Charlson Comorbidity Integration",
-            status=status,
-            score=score,
-            metrics={"primary": primary_value, "secondary": secondary_value, **kwargs},
-            alerts=alerts,
-            recommendations=recs
-        )
-        self.history.append(res)
-        return res
+        super().__init__("Charlson Comorbidity Integration", threshold, config)
 
 # =============================================================================
 # COMPOSITE ENRICHMENT SUITE
