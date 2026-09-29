@@ -1,114 +1,67 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Crb65 Pneumonia Severity API",
-    "description": "Enterprise Distributed Component Platform (Clinical & Cryptographic AI) adhering to CAP / CLSI / NIST Standards.",
-    "version": "3.0.0-ENTERPRISE",
-    "contact": {
-      "name": "Dr. Abu Suraih Sakhri",
-      "url": "https://github.com/abusuraihsakhri"
-    }
+    "title": "CRB-65 Pneumonia Severity API",
+    "description": "CRB-65 scoring for adults with community-acquired pneumonia in primary care. Runtime documentation is available from FastAPI at /docs and /openapi.json.",
+    "version": "4.0.0"
   },
   "paths": {
     "/health": {
       "get": {
-        "summary": "Health and metadata check",
-        "responses": {
-          "200": {
-            "description": "System optimal"
-          }
-        }
+        "summary": "Service health check",
+        "responses": {"200": {"description": "Healthy service"}}
       }
     },
     "/metrics": {
       "get": {
-        "summary": "Prometheus operational metrics",
-        "responses": {
-          "200": {
-            "description": "Prometheus text metrics"
+        "summary": "Auxiliary in-memory counters",
+        "responses": {"200": {"description": "Counter snapshot"}}
+      }
+    },
+    "/api/crb65": {
+      "post": {
+        "summary": "Calculate CRB-65",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["respiratory_rate", "systolic_bp", "diastolic_bp", "age_years"],
+                "properties": {
+                  "patient_id": {"type": "string", "default": "ANON", "maxLength": 128},
+                  "confusion": {"type": "boolean", "default": false},
+                  "respiratory_rate": {"type": "integer", "minimum": 1, "maximum": 100},
+                  "systolic_bp": {"type": "integer", "minimum": 1, "maximum": 300},
+                  "diastolic_bp": {"type": "integer", "minimum": 1, "maximum": 200},
+                  "age_years": {"type": "integer", "minimum": 18, "maximum": 120}
+                }
+              }
+            }
           }
+        },
+        "responses": {
+          "200": {"description": "CRB-65 score, NICE risk band, criteria breakdown, and place-of-care guidance"},
+          "422": {"description": "Validation error"}
         }
       }
     },
     "/api/audit": {
       "post": {
-        "summary": "Dispatch task payload across specialized workers",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "task_id": {
-                    "type": "string"
-                  },
-                  "target_identifier": {
-                    "type": "string"
-                  },
-                  "primary_metric": {
-                    "type": "number"
-                  },
-                  "secondary_metric": {
-                    "type": "number"
-                  },
-                  "status_descriptor": {
-                    "type": "string"
-                  },
-                  "is_critical_flag": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "task_id",
-                  "target_identifier",
-                  "primary_metric"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Consensus dossier with HMAC signature"
-          }
-        }
+        "summary": "Legacy auxiliary audit endpoint retained for compatibility",
+        "responses": {"200": {"description": "Auxiliary audit dossier"}}
       }
     },
     "/api/chat": {
       "post": {
-        "summary": "Air-gapped supervisory conversational assistant",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "query": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "query"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Supervisory response"
-          }
-        }
+        "summary": "Legacy deterministic auxiliary query endpoint",
+        "responses": {"200": {"description": "Auxiliary response"}}
       }
     },
     "/api/audit/logs": {
       "get": {
-        "summary": "Retrieve and cryptographically verify HMAC audit trail",
-        "responses": {
-          "200": {
-            "description": "Cryptographic audit trail"
-          }
-        }
+        "summary": "Retrieve and verify the in-memory HMAC audit trail",
+        "responses": {"200": {"description": "Audit trail snapshot and verification status"}}
       }
     }
   }
