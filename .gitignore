@@ -2,8 +2,12 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 results.csv
 output.csv
+crb65_results.csv
 *.egg-info/
 dist/
 build/
