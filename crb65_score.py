@@ -1,38 +1,40 @@
 #!/usr/bin/env python3
-"""
-CRB-65 Outpatient & Inpatient Community-Acquired Pneumonia Severity Score
--------------------------------------------------------------------------
-Calculates the non-laboratory CRB-65 score (0-4 points) for community-acquired pneumonia (CAP)
-to stratify 30-day mortality risk and guide outpatient vs inpatient vs ICU triage decisions.
+"""CRB-65 score for adults with community-acquired pneumonia in primary care.
 
-Reference: Lim WS et al. Thorax 2002; 57:1005-1011 (British Thoracic Society BTS / NICE CG191)
-Domain: Pulmonology / Infectious Diseases / Primary Care
+The scoring criteria and risk bands follow NICE NG250. CRB-65 supports, but does not
+replace, clinical judgement. It is not intended for children or for determining a
+specific antimicrobial regimen.
 """
 
 import argparse
 import csv
 import json
-import math
 import sys
-from dataclasses import dataclass, field, asdict
-from typing import Dict, Any, List, Optional, Tuple
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class ClinicalValueError(ValueError):
-    """Raised when clinical parameters are outside physiologically plausible ranges."""
-    pass
+    """Raised when required clinical inputs are missing or outside accepted bounds."""
 
 
-def _validate_clinical_params(respiratory_rate: int, systolic_bp: int, diastolic_bp: int, age_years: int) -> None:
-    """Validate clinical parameters are within physiologically plausible ranges."""
-    if not isinstance(age_years, int) or age_years < 0 or age_years > 150:
-        raise ClinicalValueError(f"Age must be an integer between 0 and 150, got {age_years}")
-    if not isinstance(respiratory_rate, int) or respiratory_rate < 0 or respiratory_rate > 100:
-        raise ClinicalValueError(f"Respiratory rate must be an integer between 0 and 100 bpm, got {respiratory_rate}")
-    if not isinstance(systolic_bp, int) or systolic_bp < 0 or systolic_bp > 300:
-        raise ClinicalValueError(f"Systolic BP must be an integer between 0 and 300 mmHg, got {systolic_bp}")
-    if not isinstance(diastolic_bp, int) or diastolic_bp < 0 or diastolic_bp > 200:
-        raise ClinicalValueError(f"Diastolic BP must be an integer between 0 and 200 mmHg, got {diastolic_bp}")
+def _validate_clinical_params(
+    respiratory_rate: int,
+    systolic_bp: int,
+    diastolic_bp: int,
+    age_years: int,
+) -> None:
+    """Validate adult CRB-65 inputs before scoring."""
+    if not isinstance(age_years, int) or not 18 <= age_years <= 120:
+        raise ClinicalValueError(f"Age must be an integer between 18 and 120 years, got {age_years}")
+    if not isinstance(respiratory_rate, int) or not 1 <= respiratory_rate <= 100:
+        raise ClinicalValueError(
+            f"Respiratory rate must be an integer between 1 and 100 breaths/min, got {respiratory_rate}"
+        )
+    if not isinstance(systolic_bp, int) or not 1 <= systolic_bp <= 300:
+        raise ClinicalValueError(f"Systolic BP must be an integer between 1 and 300 mmHg, got {systolic_bp}")
+    if not isinstance(diastolic_bp, int) or not 1 <= diastolic_bp <= 200:
+        raise ClinicalValueError(f"Diastolic BP must be an integer between 1 and 200 mmHg, got {diastolic_bp}")
     if diastolic_bp > systolic_bp:
         raise ClinicalValueError(
             f"Diastolic BP ({diastolic_bp}) cannot exceed systolic BP ({systolic_bp})"
@@ -41,7 +43,8 @@ def _validate_clinical_params(respiratory_rate: int, systolic_bp: int, diastolic
 
 @dataclass
 class CRB65CriteriaBreakdown:
-    """Individual criteria evaluations for CRB-65."""
+    """Individual CRB-65 criterion evaluations."""
+
     confusion_present: bool
     confusion_points: int
     respiratory_rate_bpm: int
@@ -55,16 +58,18 @@ class CRB65CriteriaBreakdown:
 
 @dataclass
 class CRB65Result:
-    """Complete CRB-65 Pneumonia Severity Score evaluation."""
+    """Complete CRB-65 evaluation using current NICE risk bands."""
+
     patient_id: str
-    total_score: int  # 0 to 4
-    risk_tier: str  # 'Low Risk (Group 1)', 'Intermediate Risk (Group 2)', 'High Risk (Group 3)'
-    thirty_day_mortality_percent: float
+    total_score: int
+    risk_tier: str
+    thirty_day_mortality_percent: Optional[float]
     mortality_range_text: str
-    recommended_disposition: str  # 'OUTPATIENT_HOME_CARE', 'INPATIENT_HOSPITAL_CARE', 'URGENT_HOSPITAL_OR_ICU'
+    recommended_disposition: str
     antibiotic_guidance: str
     criteria_breakdown: CRB65CriteriaBreakdown
     risk_factors_present: List[str]
+    clinical_note: str
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -74,32 +79,32 @@ class CRB65Result:
 
 
 class CRB65Engine:
-    """Computational engine for BTS / NICE CRB-65 CAP assessment."""
+    """CRB-65 scoring engine for adults with clinically diagnosed CAP in primary care."""
 
     @staticmethod
     def evaluate_confusion(confusion: bool) -> Tuple[int, Optional[str]]:
-        """C: Confusion (AMT <=8, GCS <15, or new disorientation)."""
+        """C: AMT <= 8 or new disorientation in person, place, or time."""
         if confusion:
-            return 1, "New onset mental confusion (AMT <= 8 or GCS < 15, +1 pt)"
+            return 1, "Confusion present (AMT <= 8 or new disorientation, +1 pt)"
         return 0, None
 
     @staticmethod
     def evaluate_respiratory_rate(rr_bpm: int) -> Tuple[int, Optional[str]]:
-        """R: Respiratory rate >= 30 breaths/min."""
+        """R: respiratory rate >= 30 breaths/min."""
         if rr_bpm >= 30:
-            return 1, f"Tachypnea: Respiratory Rate {rr_bpm} >= 30 bpm (+1 pt)"
+            return 1, f"Respiratory rate {rr_bpm} >= 30 breaths/min (+1 pt)"
         return 0, None
 
     @staticmethod
     def evaluate_blood_pressure(sbp_mmhg: int, dbp_mmhg: int) -> Tuple[int, Optional[str]]:
-        """B: Blood pressure: Systolic < 90 mmHg OR Diastolic <= 60 mmHg."""
+        """B: systolic BP < 90 mmHg or diastolic BP <= 60 mmHg."""
         if sbp_mmhg < 90 or dbp_mmhg <= 60:
-            return 1, f"Hypotension: SBP {sbp_mmhg} < 90 or DBP {dbp_mmhg} <= 60 mmHg (+1 pt)"
+            return 1, f"Low blood pressure: {sbp_mmhg}/{dbp_mmhg} mmHg (+1 pt)"
         return 0, None
 
     @staticmethod
     def evaluate_age(age_years: int) -> Tuple[int, Optional[str]]:
-        """65: Age >= 65 years."""
+        """65: age >= 65 years."""
         if age_years >= 65:
             return 1, f"Age {age_years} >= 65 years (+1 pt)"
         return 0, None
@@ -107,49 +112,48 @@ class CRB65Engine:
     @classmethod
     def evaluate(
         cls,
-        patient_id: str = "PT-001",
+        patient_id: str = "ANON",
         confusion: bool = False,
-        respiratory_rate: int = 18,
-        systolic_bp: int = 120,
-        diastolic_bp: int = 80,
-        age_years: int = 55,
+        respiratory_rate: Optional[int] = None,
+        systolic_bp: Optional[int] = None,
+        diastolic_bp: Optional[int] = None,
+        age_years: Optional[int] = None,
     ) -> CRB65Result:
-        """Evaluate full CRB-65 score, mortality estimate, and antibiotic triage."""
+        """Calculate CRB-65 and return NICE-aligned risk/disposition guidance."""
         _validate_clinical_params(respiratory_rate, systolic_bp, diastolic_bp, age_years)
-        factors = []
+        factors: List[str] = []
 
         pts_c, desc_c = cls.evaluate_confusion(confusion)
-        if desc_c: factors.append(desc_c)
-
+        if desc_c:
+            factors.append(desc_c)
         pts_r, desc_r = cls.evaluate_respiratory_rate(respiratory_rate)
-        if desc_r: factors.append(desc_r)
-
+        if desc_r:
+            factors.append(desc_r)
         pts_b, desc_b = cls.evaluate_blood_pressure(systolic_bp, diastolic_bp)
-        if desc_b: factors.append(desc_b)
-
+        if desc_b:
+            factors.append(desc_b)
         pts_65, desc_65 = cls.evaluate_age(age_years)
-        if desc_65: factors.append(desc_65)
+        if desc_65:
+            factors.append(desc_65)
 
         total_score = pts_c + pts_r + pts_b + pts_65
 
         if total_score == 0:
             tier = "Low Risk (Group 1)"
-            mortality = 1.2
-            mort_range = "0.9% - 1.5%"
-            disp = "OUTPATIENT_HOME_CARE"
-            abx = "Outpatient oral monotherapy: Amoxicillin 500mg-1g TID (or Doxycycline 100mg BID / Clarithromycin 500mg BID if penicillin-allergic) for 5 days."
-        elif total_score in [1, 2]:
+            mortality_range = "<1%"
+            disposition = "PRIMARY_CARE_WITH_SAFETY_NETTING"
+        elif total_score == 1:
             tier = "Intermediate Risk (Group 2)"
-            mortality = 8.2 if total_score == 2 else 5.3
-            mort_range = "5.3% - 12.2%"
-            disp = "INPATIENT_HOSPITAL_CARE"
-            abx = "Inpatient admission indicated. Oral or IV dual therapy: Amoxicillin + Clarithromycin (or Levofloxacin / Moxifloxacin monotherapy)."
+            mortality_range = "1% to 10%"
+            disposition = "SHARED_DECISION_COMMUNITY_OR_REFERRAL"
+        elif total_score == 2:
+            tier = "Intermediate Risk (Group 2)"
+            mortality_range = "1% to 10%"
+            disposition = "CONSIDER_HOSPITAL_REFERRAL"
         else:
             tier = "High Risk (Group 3)"
-            mortality = 31.3 if total_score == 4 else 23.0
-            mort_range = "23.0% - 34.0%"
-            disp = "URGENT_HOSPITAL_OR_ICU"
-            abx = "Severe CAP emergency. Urgent hospital admission & HDU/ICU evaluation. Broad-spectrum IV dual therapy: Co-amoxiclav 1.2g IV TID + Clarithromycin 500mg IV BID (or Ceftriaxone 2g IV + Macrolide)."
+            mortality_range = ">10%"
+            disposition = "CONSIDER_HOSPITAL_REFERRAL_HIGH_RISK"
 
         breakdown = CRB65CriteriaBreakdown(
             confusion_present=confusion,
@@ -167,49 +171,67 @@ class CRB65Engine:
             patient_id=patient_id,
             total_score=total_score,
             risk_tier=tier,
-            thirty_day_mortality_percent=mortality,
-            mortality_range_text=mort_range,
-            recommended_disposition=disp,
-            antibiotic_guidance=abx,
+            thirty_day_mortality_percent=None,
+            mortality_range_text=mortality_range,
+            recommended_disposition=disposition,
+            antibiotic_guidance=(
+                "CRB-65 alone does not determine a specific antimicrobial regimen. "
+                "Use current local/NICE antimicrobial guidance and account for allergy, pregnancy, "
+                "comorbidity, disease severity, microbiology, and local resistance patterns."
+            ),
             criteria_breakdown=breakdown,
             risk_factors_present=factors,
+            clinical_note=(
+                "Use CRB-65 together with clinical judgement. Refer to hospital regardless of score "
+                "when there are signs of a more serious illness such as cardiorespiratory failure or sepsis."
+            ),
         )
 
 
-# ==============================================================================
-# CLI & BATCH PROCESSING
-# ==============================================================================
+def _required_row_value(row: Dict[str, str], *names: str) -> str:
+    for name in names:
+        value = row.get(name)
+        if value is not None and str(value).strip() != "":
+            return str(value).strip()
+    raise ClinicalValueError(f"Missing required CSV field; expected one of: {', '.join(names)}")
+
+
+def _parse_bool(value: Any) -> bool:
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "y"}:
+        return True
+    if normalized in {"0", "false", "no", "n"}:
+        return False
+    raise ClinicalValueError(f"Boolean value must be one of true/false, yes/no, or 1/0; got {value!r}")
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="crb65-pneumonia-severity",
-        description="CRB-65 Community-Acquired Pneumonia Severity & Mortality Risk Calculator"
+        description="CRB-65 community-acquired pneumonia severity calculator",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # Eval
-    p_eval = subparsers.add_parser("eval", help="Evaluate CRB-65 score for patient")
-    p_eval.add_argument("--patient-id", default="PT-2026-001")
-    p_eval.add_argument("--confusion", action="store_true", help="New onset confusion / AMT <=8 / GCS <15")
-    p_eval.add_argument("--rr", type=int, default=18, help="Respiratory Rate (breaths/min)")
-    p_eval.add_argument("--sbp", type=int, default=120, help="Systolic Blood Pressure (mmHg)")
-    p_eval.add_argument("--dbp", type=int, default=80, help="Diastolic Blood Pressure (mmHg)")
-    p_eval.add_argument("--age", type=int, required=True, help="Age in years")
-    p_eval.add_argument("--json", action="store_true", help="Output JSON format")
+    p_eval = subparsers.add_parser("eval", help="Evaluate CRB-65 score")
+    p_eval.add_argument("--patient-id", default="ANON")
+    p_eval.add_argument("--confusion", action="store_true", help="AMT <=8 or new disorientation")
+    p_eval.add_argument("--rr", type=int, required=True, help="Respiratory rate (breaths/min)")
+    p_eval.add_argument("--sbp", type=int, required=True, help="Systolic blood pressure (mmHg)")
+    p_eval.add_argument("--dbp", type=int, required=True, help="Diastolic blood pressure (mmHg)")
+    p_eval.add_argument("--age", type=int, required=True, help="Age in years (18-120)")
+    p_eval.add_argument("--json", action="store_true", help="Output JSON")
 
-    # Chat
-    p_chat = subparsers.add_parser("chat", help="Clinical questions about CRB-65")
+    p_chat = subparsers.add_parser("chat", help="Show CRB-65 criteria/risk summary")
     p_chat.add_argument("query", nargs="+")
 
-    # Batch
-    p_batch = subparsers.add_parser("batch", help="Batch evaluate CSV file")
+    p_batch = subparsers.add_parser("batch", help="Batch-evaluate CSV records")
     p_batch.add_argument("-i", "--input", required=True)
     p_batch.add_argument("-o", "--output", default="crb65_results.csv")
 
     args = parser.parse_args(argv)
 
     if args.command == "eval":
-        res = CRB65Engine.evaluate(
+        result = CRB65Engine.evaluate(
             patient_id=args.patient_id,
             confusion=args.confusion,
             respiratory_rate=args.rr,
@@ -218,65 +240,56 @@ def main(argv=None):
             age_years=args.age,
         )
         if args.json:
-            print(res.to_json())
+            print(result.to_json())
         else:
-            print("=" * 80)
-            print(f"  CRB-65 PNEUMONIA SEVERITY REPORT — {res.patient_id}")
-            print("=" * 80)
-            print(f"  Total CRB-65 Score:     {res.total_score} / 4")
-            print(f"  Risk Classification:    [{res.risk_tier}]")
-            print(f"  30-Day Mortality Risk:  {res.thirty_day_mortality_percent:.1f}% ({res.mortality_range_text})")
-            print(f"  Recommended Care:       {res.recommended_disposition}")
-            print("-" * 80)
-            print(f"  Criteria Met ({res.total_score}/4):")
-            bd = res.criteria_breakdown
-            print(f"    * C (Confusion):           {bd.confusion_points} pt ({bd.confusion_present})")
-            print(f"    * R (RR >= 30 bpm):        {bd.respiratory_rate_points} pt ({bd.respiratory_rate_bpm} bpm)")
-            print(f"    * B (SBP<90 or DBP<=60):   {bd.blood_pressure_points} pt ({bd.systolic_bp_mmhg}/{bd.diastolic_bp_mmhg} mmHg)")
-            print(f"    * 65 (Age >= 65 years):    {bd.age_points} pt ({bd.age_years} years)")
-            print("-" * 80)
-            print(f"  Antibiotic Guidance: {res.antibiotic_guidance}")
-            print("=" * 80)
+            bd = result.criteria_breakdown
+            print("=" * 72)
+            print(f"CRB-65 report — {result.patient_id}")
+            print("=" * 72)
+            print(f"Score: {result.total_score}/4")
+            print(f"Risk: {result.risk_tier} ({result.mortality_range_text} 30-day mortality risk)")
+            print(f"Place-of-care guidance: {result.recommended_disposition}")
+            print(f"C confusion: {bd.confusion_points} | R >=30: {bd.respiratory_rate_points} | "
+                  f"B low BP: {bd.blood_pressure_points} | age >=65: {bd.age_points}")
+            print(result.clinical_note)
         return 0
 
-    elif args.command == "chat":
-        q = " ".join(args.query).lower()
-        if "criteria" in q or "variable" in q:
-            print("CRB-65: Confusion (+1), Respiratory Rate >=30 (+1), Blood Pressure <90/<60 (+1), Age >=65 (+1).")
-        elif "mortality" in q or "risk" in q:
-            print("Score 0: Low Risk (1.2%), Score 1-2: Intermediate (5-12%), Score 3-4: High Risk / Severe (23-34%).")
+    if args.command == "chat":
+        query = " ".join(args.query).lower()
+        if "criteria" in query or "variable" in query:
+            print("CRB-65: confusion, respiratory rate >=30/min, SBP <90 or DBP <=60 mmHg, age >=65; 1 point each.")
         else:
-            print("CRB-65 Pneumonia Severity Engine Active (BTS / NICE CG191 Guidelines).")
+            print("NICE NG250 risk bands: score 0 <1%; score 1-2 1-10%; score 3-4 >10%. Use clinical judgement with the score.")
         return 0
 
-    elif args.command == "batch":
-        with open(args.input, mode="r", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
-        out_rows = []
-        for r in rows:
-            pid = r.get("patient_id", "PT-000")
-            conf = str(r.get("confusion", "0")).lower() in ["1", "true", "yes"]
-            rr = int(r.get("rr", r.get("respiratory_rate", 18)))
-            sbp = int(r.get("sbp", r.get("systolic_bp", 120)))
-            dbp = int(r.get("dbp", r.get("diastolic_bp", 80)))
-            age = int(r.get("age", r.get("age_years", 60)))
+    if args.command == "batch":
+        with open(args.input, mode="r", encoding="utf-8-sig", newline="") as f:
+            rows = list(csv.DictReader(f))
 
-            eval_res = CRB65Engine.evaluate(
-                patient_id=pid,
-                confusion=conf,
-                respiratory_rate=rr,
-                systolic_bp=sbp,
-                diastolic_bp=dbp,
-                age_years=age,
+        out_rows: List[Dict[str, Any]] = []
+        for row_number, row in enumerate(rows, start=2):
+            try:
+                result = CRB65Engine.evaluate(
+                    patient_id=row.get("patient_id", "ANON") or "ANON",
+                    confusion=_parse_bool(_required_row_value(row, "confusion")),
+                    respiratory_rate=int(_required_row_value(row, "rr", "respiratory_rate")),
+                    systolic_bp=int(_required_row_value(row, "sbp", "systolic_bp")),
+                    diastolic_bp=int(_required_row_value(row, "dbp", "diastolic_bp")),
+                    age_years=int(_required_row_value(row, "age", "age_years")),
+                )
+            except (ValueError, ClinicalValueError) as exc:
+                raise ClinicalValueError(f"Invalid data on CSV row {row_number}: {exc}") from exc
+
+            out_rows.append(
+                {
+                    **row,
+                    "crb65_score": result.total_score,
+                    "risk_tier": result.risk_tier,
+                    "mortality_risk": result.mortality_range_text,
+                    "recommended_disposition": result.recommended_disposition,
+                }
             )
-            out_rows.append({
-                **r,
-                "crb65_score": eval_res.total_score,
-                "risk_tier": eval_res.risk_tier,
-                "mortality_percent": eval_res.thirty_day_mortality_percent,
-                "recommended_disposition": eval_res.recommended_disposition,
-            })
+
         if out_rows:
             with open(args.output, mode="w", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=list(out_rows[0].keys()))
@@ -284,6 +297,8 @@ def main(argv=None):
                 writer.writerows(out_rows)
         print(f"Batch processed {len(out_rows)} rows -> {args.output}")
         return 0
+
+    return 0
 
 
 if __name__ == "__main__":
