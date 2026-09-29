@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crb65-pneumonia-severity"
+version = "4.0.0"
+description = "CRB-65 pneumonia severity scoring for adults with community-acquired pneumonia in primary care."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [{name = "abusuraihsakhri"}]
+dependencies = [
+  "pydantic>=2.8,<3",
+]
+
+[project.optional-dependencies]
+server = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.30,<1",
+]
+dev = [
+  "build>=1.2,<2",
+  "fastapi>=0.115,<1",
+  "pip-audit>=2.7,<3",
+  "pytest>=8,<10",
+  "ruff>=0.8,<1",
+  "uvicorn>=0.30,<1",
+]
+
+[project.scripts]
+crb65 = "crb65_score:main"
+crb65-service = "cli:main"
+
+[tool.setuptools]
+py-modules = ["crb65_score", "cli", "enrichment", "simulator"]
+
+[tool.setuptools.packages.find]
+include = ["agents*"]
+
+[tool.pytest.ini_options]
+testpaths = ["test_crb65_score.py", "tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]

@@ -1,137 +1,95 @@
-# CRB65 Pneumonia Severity
+# CRB-65 Pneumonia Severity
 
-> **Domain:** Clinical Decision Support & Biomedical Computing  
-> **Reference Guidelines & Standards:** `Standard Clinical Formulations & ISO/IEC Quality Frameworks`
+### [Open the Live Application →](https://abusuraihsakhri.github.io/crb65-pneumonia-severity/)
 
-<div align="center">
+A small CRB-65 calculator for adults with clinically diagnosed community-acquired pneumonia (CAP) in primary care. The calculator implements the NICE NG250 CRB-65 criteria and current 30-day mortality risk bands.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-3776AB.svg?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688.svg?logo=fastapi&logoColor=white)
-![Audit Trail](https://img.shields.io/badge/Audit-HMAC--SHA256_Tamper--Evident-brightgreen.svg)
-![Zero-PHI Guard](https://img.shields.io/badge/Guard-Zero--PHI_Outbound-blue.svg)
-![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)
+## What it calculates
 
-</div>
+CRB-65 assigns 1 point for each of:
 
----
+- **C** — confusion: abbreviated Mental Test score 8 or less, or new disorientation
+- **R** — respiratory rate **≥30 breaths/min**
+- **B** — systolic blood pressure **<90 mmHg** or diastolic blood pressure **≤60 mmHg**
+- **65** — age **≥65 years**
 
-## 📖 What It Does
+NICE NG250 stratifies 30-day mortality risk as:
 
-CRB-65 Outpatient & Inpatient Community-Acquired Pneumonia Severity Score
--------------------------------------------------------------------------
-Calculates the non-laboratory CRB-65 score (0-4 points) for community-acquired pneumonia (CAP)
-to stratify 30-day mortality risk and guide outpatient vs inpatient vs ICU triage decisions.
+| Score | Risk band | Place-of-care guidance |
+|---:|---|---|
+| 0 | Low, **<1%** | Primary care-led services with safety-netting advice, subject to clinical judgement |
+| 1 | Intermediate, **1%–10%** | Shared decision: primary care-led care with safety-netting or referral to virtual ward, SDEC, hospital-at-home, or hospital |
+| 2 | Intermediate, **1%–10%** | Consider referral to hospital |
+| 3–4 | High, **>10%** | Consider hospital referral; determine urgency and place of care from the full clinical picture |
 
-Reference: Lim WS et al. Thorax 2002; 57:1005-1011 (British Thoracic Society BTS / NICE CG191)
-Domain: Pulmonology / Infectious Diseases / Primary Care
+CRB-65 supports rather than replaces clinical judgement. Refer to hospital regardless of score when features suggest a more serious illness such as cardiorespiratory failure or sepsis. The calculator does not prescribe a specific antimicrobial regimen.
 
----
+Reference: [NICE NG250 — Pneumonia: diagnosis and management](https://www.nice.org.uk/guidance/ng250/chapter/recommendations).
 
-## ⚙️ Key Capabilities & Algorithmic Modules
+## Browser application
 
-### 🔬 Core Algorithmic & Evaluation Engines
+The GitHub Pages application is a static HTML/JavaScript calculator. All calculations run locally in the browser; the page does not send or store entered clinical values and does not require a backend or Python runtime.
 
-- **`CRB65CriteriaBreakdown`**: Individual criteria evaluations for CRB-65.
-- **`CRB65Result`**: Complete CRB-65 Pneumonia Severity Score evaluation.
-- **`CRB65Engine`**: Computational engine for BTS / NICE CRB-65 CAP assessment.
+## Command line
 
----
-
-## 📐 Mathematical Formulation & Logic
-
-```text
-  total_score = pts_c + pts_r + pts_b + pts_65
-
-  CRB-65 Criteria (1 point each):
-    C: Confusion (AMT <= 8, GCS < 15, or new disorientation)
-    R: Respiratory Rate >= 30 breaths/min
-    B: Blood Pressure (Systolic < 90 mmHg OR Diastolic <= 60 mmHg)
-    65: Age >= 65 years
-
-  Risk Stratification:
-    Score 0:     Low Risk (Group 1)       ~1.2% 30-day mortality  → Outpatient
-    Score 1-2:   Intermediate Risk (Group 2)  ~5-12% mortality    → Inpatient
-    Score 3-4:   High Risk (Group 3)       ~23-31% mortality     → Urgent/ICU
-```
-
----
-
-## 💻 CLI Quickstart & Usage
-
-### 1. Evaluate a Single Patient
-```bash
-python crb65_score.py eval --age 72 --rr 32 --confusion
-```
-
-### 2. JSON Output
-```bash
-python crb65_score.py eval --age 68 --json
-```
-
-### 3. Batch Process CSV
-```bash
-python crb65_score.py batch -i sample.csv -o results.csv
-```
-
-### 4. Clinical Q&A
-```bash
-python crb65_score.py chat "What are the CRB-65 criteria?"
-```
-
-### Parameter Reference
-| Parameter | Description | Default |
-|:----------|:------------|:--------|
-| `--patient-id` | Patient identifier | `PT-2026-001` |
-| `--confusion` | New onset confusion / AMT <=8 / GCS <15 | `False` |
-| `--rr` | Respiratory Rate (breaths/min) | `18` |
-| `--sbp` | Systolic Blood Pressure (mmHg) | `120` |
-| `--dbp` | Diastolic Blood Pressure (mmHg) | `80` |
-| `--age` | Age in years (required) | — |
-| `--json` | Output JSON format | `False` |
-
-### Input Data Schema (Batch CSV)
-
-| Field | Description | Requirement |
-|:------|:------------|:------------|
-| `patient_id` | Patient identifier | Required |
-| `confusion` | Confusion present (1/true/yes) | Optional (default: 0) |
-| `rr` | Respiratory Rate (breaths/min) | Optional (default: 18) |
-| `sbp` | Systolic Blood Pressure (mmHg) | Optional (default: 120) |
-| `dbp` | Diastolic Blood Pressure (mmHg) | Optional (default: 80) |
-| `age` | Age in years | Required |
-
----
-
-## 🛡️ Security & Enterprise Architecture
-
-* **Zero-PHI Outbound Interceptor:** Active AST and regex inspection blocking SSNs, MRNs, phone numbers, and patient identifiers.
-* **Tamper-Evident HMAC-SHA256 Audit Trail:** Chained, cryptographically signed logs for every evaluation and state transition.
-* **Air-Gapped LLM Reasoning Adapter:** Agnostic integration for local Ollama instances (`llama3`, `mistral`), Claude 3.5 Sonnet, GPT-4o, and deterministic test mocks.
-* **Active Learning Bayesian Calibration:** Dynamic tracker updating worker reliability weights and monitoring Brier calibration drift.
-* **FastAPI & Prometheus Telemetry:** Exposes OpenAPI 3.1 REST endpoints and operational Prometheus metrics (`/metrics`).
-
----
-
-## 🧪 Testing & Verification
-
-Run the automated test suite:
+Python 3.10+ is supported.
 
 ```bash
-pytest -v
+python -m pip install -e .
+crb65 eval --age 72 --rr 32 --sbp 118 --dbp 74 --confusion
 ```
 
-Execute high-throughput batch simulation benchmarks:
+JSON output:
 
 ```bash
-python simulator.py --tasks 1000 --concurrency 8
+crb65 eval --age 68 --rr 22 --sbp 128 --dbp 76 --json
 ```
 
----
-
-## 🐳 Container Deployment
+Batch CSV processing:
 
 ```bash
-docker build -t crb65-pneumonia-severity .
-docker run -p 8000:8000 crb65-pneumonia-severity
+crb65 batch -i sample.csv -o results.csv
 ```
+
+Required CSV fields are `confusion`, `rr` (or `respiratory_rate`), `sbp` (or `systolic_bp`), `dbp` (or `diastolic_bp`), and `age` (or `age_years`). `patient_id` is optional.
+
+## REST API
+
+Install server dependencies and launch FastAPI:
+
+```bash
+python -m pip install -e '.[server]'
+crb65-service serve --host 127.0.0.1 --port 8000
+```
+
+The clinical endpoint is `POST /api/crb65`; interactive OpenAPI documentation is available at `/docs` while the server is running. Auxiliary audit endpoints from earlier versions are retained for compatibility.
+
+## Development and testing
+
+```bash
+python -m pip install -e '.[dev]'
+ruff check .
+pytest -q
+python -m build
+```
+
+CI tests Python 3.10, 3.11, and 3.12, runs dependency consistency and vulnerability checks, builds Python distributions, and builds the container image.
+
+## Docker
+
+Copy `.env.example` to `.env` and provide a strong `AUDIT_SECRET_KEY` if the auxiliary audit endpoints are used:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+docker compose up --build
+```
+
+No production secret is committed to the repository.
+
+## Browser compatibility
+
+The Pages calculator uses standard HTML, CSS, and JavaScript and is intended for current desktop and mobile versions of Chrome, Firefox, Safari, and Edge. No WebAssembly or Pyodide runtime is required.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

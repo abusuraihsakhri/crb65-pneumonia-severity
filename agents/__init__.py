@@ -1,7 +1,3 @@
-"""
-Crb65 Pneumonia Severity — Enterprise Automated Analytical Suite.
-Domain: Clinical & Biomedical AI
-Standard: CAP / CLSI / ISO Standards
+"""Auxiliary compatibility package for CRB-65 service endpoints."""
 
-"""
-__version__ = "3.0.0-ENTERPRISE"
+__version__ = "4.0.0"
